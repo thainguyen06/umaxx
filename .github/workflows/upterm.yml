@@ -22,22 +22,17 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           
-          Write-Host "=== 1. Tải và cài đặt Upterm cho Windows ==="
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/owenthereal/upterm/releases/latest"
-          $asset = $release.assets | Where-Object { $_.name -match "windows_amd64\.zip" }
-          if (-not $asset) {
-              throw "Không tìm thấy bản release Windows AMD64 của upterm."
-          }
-          
-          Write-Host "Đang tải từ: $($asset.browser_download_url)"
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "upterm.zip"
+          Write-Host "=== 1. Tải và giải nén Upterm cho Windows ==="
+          $url = "https://github.com/owenthereal/upterm/releases/latest/download/upterm_windows_amd64.tar.gz"
+          Write-Host "Đang tải từ: $url"
+          Invoke-WebRequest -Uri $url -OutFile "upterm.tar.gz"
           
           Write-Host "Giải nén Upterm..."
-          Expand-Archive -Path "upterm.zip" -DestinationPath "." -Force
+          tar -xzf upterm.tar.gz
           
           $uptermExe = Get-ChildItem -Recurse -Filter "upterm.exe" | Select-Object -ExpandProperty FullName
           if (-not $uptermExe) {
-              throw "Không tìm thấy file upterm.exe."
+              throw "Không tìm thấy file upterm.exe sau khi giải nén."
           }
           
           $binDir = Split-Path $uptermExe
@@ -81,7 +76,7 @@ jobs:
           Write-Host $fullOutput
           Write-Host "=========================================="
 
-          # Tạo Markdown Step Summary an toàn bằng [char]96 để tránh lỗi escape backtick trong PowerShell
+          # Tạo Markdown Step Summary an toàn bằng [char]96
           $bq = [string][char]96 + [string][char]96 + [string][char]96
           $summary = "### 🚀 Upterm Windows Admin Debug (6 Hours Max)`n" +
                      "Môi trường chạy trên **Windows Runner (Administrator)**.`n`n" +

@@ -39,7 +39,7 @@ jobs:
           $env:PATH = "$binDir;$env:PATH"
           Write-Host "Upterm sẵn sàng tại: $uptermExe"
 
-          Write-Host "=== 2. Khởi động Upterm Host (quyền Administrator) ==="
+          Write-Host "=== 2. Khởi động Upterm Host (quyền Administrator + Auto-accept) ==="
           
           $timeoutMinutes = [int]"${{ inputs.timeout }}"
           if ($timeoutMinutes -le 0 -or $timeoutMinutes -gt 360) { $timeoutMinutes = 360 }
@@ -47,10 +47,10 @@ jobs:
 
           $logPath = "upterm_output.log"
           
-          # Chạy background job gọi upterm host với powershell admin và ghi toàn bộ output ra log
+          # Thêm cờ --accept để tự động chấp nhận kết nối
           $job = Start-Job -ScriptBlock {
               param($exe, $logFile)
-              & $exe host --force-color --command "powershell.exe" *>&1 | Tee-Object -FilePath $logFile
+              & $exe host --accept --command "powershell.exe" *>&1 | Tee-Object -FilePath $logFile
           } -ArgumentList $uptermExe, $logPath
 
           Write-Host "Đang chờ thông tin kết nối từ Upterm..."

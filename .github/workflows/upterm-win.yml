@@ -39,7 +39,7 @@ jobs:
           $env:PATH = "$binDir;$env:PATH"
           Write-Host "Upterm sẵn sàng tại: $uptermExe"
 
-          Write-Host "=== 2. Khởi động Upterm Host (Admin + Auto-accept + Skip Host Key Check) ==="
+          Write-Host "=== 2. Khởi động Upterm Host ==="
           
           $timeoutMinutes = [int]"${{ inputs.timeout }}"
           if ($timeoutMinutes -le 0 -or $timeoutMinutes -gt 360) { $timeoutMinutes = 360 }
@@ -47,10 +47,10 @@ jobs:
 
           $logPath = "upterm_output.log"
           
-          # Thêm cờ --skip-host-key-check theo khuyến nghị của upterm
+          # Chạy upterm trực tiếp không ép buộc shell riêng
           $job = Start-Job -ScriptBlock {
               param($exe, $logFile)
-              & $exe host --accept --skip-host-key-check -- powershell.exe *>&1 | Tee-Object -FilePath $logFile
+              & $exe host --accept --skip-host-key-check *>&1 | Tee-Object -FilePath $logFile
           } -ArgumentList $uptermExe, $logPath
 
           Write-Host "Đang chờ thông tin kết nối từ Upterm..."
@@ -76,17 +76,6 @@ jobs:
           Write-Host $fullOutput
           Write-Host "=========================================="
 
-          # Tạo Markdown Step Summary an toàn bằng [char]96
-          $bq = [string][char]96 + [string][char]96 + [string][char]96
-          $summary = "### 🚀 Upterm Windows Admin Debug (6 Hours Max)`n" +
-                     "Môi trường chạy trên **Windows Runner (Administrator)**.`n`n" +
-                     "Toàn bộ thông tin kết nối Upterm (SSH, SFTP, Session Link):`n" +
-                     "$bq`n$fullOutput`n$bq`n" +
-                     "> **Lưu ý:** Action sẽ treo trong vòng **$timeoutMinutes phút** (hoặc đến khi bạn gõ `exit` trong terminal, hoặc tạo file `continue`)."
-
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
-
-          # Vòng lặp giữ action treo đến hết thời gian hoặc khi user thoát
           $sw = [System.Diagnostics.Stopwatch]::StartNew()
           Write-Host "Action đang treo chờ kết nối. Timeout: $timeoutMinutes phút..."
 

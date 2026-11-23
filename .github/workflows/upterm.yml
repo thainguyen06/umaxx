@@ -1,0 +1,117 @@
+name: Upterm Windows Admin Debug (6h)
+
+on:
+  workflow_dispatch:
+    inputs:
+      timeout:
+        description: 'Thời gian treo action tối đa (phút, tối đa 360 = 6h)'
+        required: true
+        default: '360'
+        type: string
+
+jobs:
+  upterm:
+    runs-on: windows-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and Run Upterm (Admin Shell)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          
+          Write-Host "=== 1. Tải và cài đặt Upterm cho Windows ==="
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/owenthereal/upterm/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match "windows_amd64\.zip" }
+          if (-not $asset) {
+              throw "Không tìm thấy bản release Windows AMD64 của upterm."
+          }
+          
+          Write-Host "Đang tải từ: $($asset.browser_download_url)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "upterm.zip"
+          
+          Write-Host "Giải nén Upterm..."
+          Expand-Archive -Path "upterm.zip" -DestinationPath "." -Force
+          
+          $uptermExe = Get-ChildItem -Recurse -Filter "upterm.exe" | Select-Object -ExpandProperty FullName
+          if (-not $uptermExe) {
+              throw "Không tìm thấy file upterm.exe."
+          }
+          
+          $binDir = Split-Path $uptermExe
+          $env:PATH = "$binDir;$env:PATH"
+          Write-Host "Upterm sẵn sàng tại: $uptermExe"
+
+          Write-Host "=== 2. Khởi động Upterm Host (quyền Administrator) ==="
+          
+          $timeoutMinutes = [int]"${{ inputs.timeout }}"
+          if ($timeoutMinutes -le 0 -or $timeoutMinutes -gt 360) { $timeoutMinutes = 360 }
+          $timeoutSeconds = $timeoutMinutes * 60
+
+          $logPath = "upterm_output.log"
+          
+          # Chạy background job gọi upterm host với powershell admin và ghi toàn bộ output ra log
+          $job = Start-Job -ScriptBlock {
+              param($exe, $logFile)
+              & $exe host --force-color --command "powershell.exe" *>&1 | Tee-Object -FilePath $logFile
+          } -ArgumentList $uptermExe, $logPath
+
+          Write-Host "Đang chờ thông tin kết nối từ Upterm..."
+          
+          $fullOutput = ""
+          for ($i = 0; $i -lt 30; $i++) {
+              Start-Sleep -Seconds 2
+              if (Test-Path $logPath) {
+                  $content = Get-Content $logPath -Raw
+                  if ($content -match "Command:" -or $content -match "ssh" -or $content -match "Session") {
+                      $fullOutput = $content
+                      break
+                  }
+              }
+          }
+
+          if (-not $fullOutput -and (Test-Path $logPath)) {
+              $fullOutput = Get-Content $logPath -Raw
+          }
+
+          Write-Host "=========================================="
+          Write-Host "FULL OUTPUT UPTERM (SSH, SFTP, URL,...):"
+          Write-Host $fullOutput
+          Write-Host "=========================================="
+
+          # Tạo Markdown Step Summary an toàn bằng [char]96 để tránh lỗi escape backtick trong PowerShell
+          $bq = [string][char]96 + [string][char]96 + [string][char]96
+          $summary = "### 🚀 Upterm Windows Admin Debug (6 Hours Max)`n" +
+                     "Môi trường chạy trên **Windows Runner (Administrator)**.`n`n" +
+                     "Toàn bộ thông tin kết nối Upterm (SSH, SFTP, Session Link):`n" +
+                     "$bq`n$fullOutput`n$bq`n" +
+                     "> **Lưu ý:** Action sẽ treo trong vòng **$timeoutMinutes phút** (hoặc đến khi bạn gõ `exit` trong terminal, hoặc tạo file `continue`)."
+
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
+
+          # Vòng lặp giữ action treo đến hết thời gian hoặc khi user thoát
+          $sw = [System.Diagnostics.Stopwatch]::StartNew()
+          Write-Host "Action đang treo chờ kết nối. Timeout: $timeoutMinutes phút..."
+
+          while ($sw.Elapsed.TotalSeconds -lt $timeoutSeconds) {
+              if ($job.State -eq 'Completed' -or $job.State -eq 'Failed') {
+                  Write-Host "Tiến trình upterm đã dừng."
+                  break
+              }
+              if (Test-Path "continue") {
+                  Write-Host "Phát hiện file continue. Kết thúc action."
+                  break
+              }
+              Start-Sleep -Seconds 15
+          }
+
+          if (Test-Path $logPath) {
+              Write-Host "--- Log cuối cùng ---"
+              Get-Content $logPath
+          }
+
+          Stop-Job -Job $job -ErrorAction SilentlyContinue
+          Remove-Job -Job $job -ErrorAction SilentlyContinue
+          Write-Host "Hoàn thành."

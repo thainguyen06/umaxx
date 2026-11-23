@@ -47,10 +47,10 @@ jobs:
 
           $logPath = "upterm_output.log"
           
-          # Thêm cờ --accept để tự động chấp nhận kết nối
+          # Sử dụng dấu -- để phân tách cờ của upterm và lệnh powershell
           $job = Start-Job -ScriptBlock {
               param($exe, $logFile)
-              & $exe host --accept --command "powershell.exe" *>&1 | Tee-Object -FilePath $logFile
+              & $exe host --accept -- powershell.exe *>&1 | Tee-Object -FilePath $logFile
           } -ArgumentList $uptermExe, $logPath
 
           Write-Host "Đang chờ thông tin kết nối từ Upterm..."

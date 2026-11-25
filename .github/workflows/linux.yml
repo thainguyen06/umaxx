@@ -1,0 +1,89 @@
+name: Upterm Linux Debug (6h)
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'Chọn kiến trúc (Architecture)'
+        required: true
+        default: 'amd64'
+        type: choice
+        options:
+          - amd64
+          - arm64
+      timeout:
+        description: 'Thời gian treo action tối đa (phút, tối đa 360 = 6h)'
+        required: true
+        default: '360'
+        type: string
+
+jobs:
+  upterm:
+    runs-on: ${{ inputs.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install and Run Upterm
+        run: |
+          set -e
+          ARCH="${{ inputs.arch }}"
+          echo "=== 1. Tải và giải nén Upterm cho Linux ($ARCH) ==="
+          URL="https://github.com/owenthereal/upterm/releases/latest/download/upterm_linux_${ARCH}.tar.gz"
+          echo "Đang tải từ: $URL"
+          curl -sL -o upterm.tar.gz "$URL"
+          
+          tar -xzf upterm.tar.gz
+          UPTERM_BIN=$(find . -name "upterm" -type f)
+          chmod +x "$UPTERM_BIN"
+          
+          echo "=== 2. Khởi động Upterm Host ==="
+          TIMEOUT_MINUTES="${{ inputs.timeout }}"
+          TIMEOUT_SECONDS=$(( TIMEOUT_MINUTES * 60 ))
+          
+          LOG_FILE="upterm_output.log"
+          $UPTERM_BIN host --accept --skip-host-key-check > "$LOG_FILE" 2>&1 &
+          UPTERM_PID=$!
+          
+          echo "Đang chờ thông tin kết nối..."
+          FULL_OUTPUT=""
+          for i in {1..30}; do
+              sleep 2
+              if [ -f "$LOG_FILE" ]; then
+                  if grep -q "Command:" "$LOG_FILE" || grep -q "ssh" "$LOG_FILE"; then
+                      FULL_OUTPUT=$(cat "$LOG_FILE")
+                      break
+                  fi
+              fi
+          done
+          
+          if [ -z "$FULL_OUTPUT" ] && [ -f "$LOG_FILE" ]; then
+              FULL_OUTPUT=$(cat "$LOG_FILE")
+          fi
+          
+          echo "=========================================="
+          echo "FULL OUTPUT UPTERM (SSH, SFTP, URL,...):"
+          echo "$FULL_OUTPUT"
+          echo "=========================================="
+          
+          START_TIME=$(date +%s)
+          while true; do
+              CURRENT_TIME=$(date +%s)
+              ELAPSED=$(( CURRENT_TIME - START_TIME ))
+              if [ $ELAPSED -ge $TIMEOUT_SECONDS ]; then
+                  echo "Đã hết thời gian timeout."
+                  break
+              fi
+              if ! kill -0 $UPTERM_PID 2>/dev/null; then
+                  echo "Tiến trình upterm đã dừng."
+                  break
+              fi
+              if [ -f "continue" ]; then
+                  echo "Phát hiện file continue. Kết thúc."
+                  break
+              fi
+              sleep 15
+          done
+          
+          kill $UPTERM_PID 2>/dev/null || true

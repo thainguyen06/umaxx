@@ -1,4 +1,4 @@
-name: Upterm Linux Debug (6h)
+name: Upterm Linux Root Debug (6h)
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install and Run Upterm
+      - name: Install and Run Upterm (Root)
         run: |
           set -e
           ARCH="${{ inputs.arch }}"
@@ -38,12 +38,13 @@ jobs:
           UPTERM_BIN=$(find . -name "upterm" -type f)
           chmod +x "$UPTERM_BIN"
           
-          echo "=== 2. Khởi động Upterm Host ==="
+          echo "=== 2. Khởi động Upterm Host với quyền Root ==="
           TIMEOUT_MINUTES="${{ inputs.timeout }}"
           TIMEOUT_SECONDS=$(( TIMEOUT_MINUTES * 60 ))
           
           LOG_FILE="upterm_output.log"
-          $UPTERM_BIN host --accept --skip-host-key-check > "$LOG_FILE" 2>&1 &
+          # Dùng sudo để chạy upterm dưới quyền root
+          sudo "$UPTERM_BIN" host --accept --skip-host-key-check > "$LOG_FILE" 2>&1 &
           UPTERM_PID=$!
           
           echo "Đang chờ thông tin kết nối..."
@@ -75,7 +76,7 @@ jobs:
                   echo "Đã hết thời gian timeout."
                   break
               fi
-              if ! kill -0 $UPTERM_PID 2>/dev/null; then
+              if ! sudo kill -0 $UPTERM_PID 2>/dev/null; then
                   echo "Tiến trình upterm đã dừng."
                   break
               fi
@@ -86,4 +87,4 @@ jobs:
               sleep 15
           done
           
-          kill $UPTERM_PID 2>/dev/null || true
+          sudo kill $UPTERM_PID 2>/dev/null || true
